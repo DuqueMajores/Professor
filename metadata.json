@@ -1,0 +1,6 @@
+{
+  "name": "Professor",
+  "description": "Um professor particular de idiomas baseado em inteligência artificial, focado em uma experiência de estudo minimalista, elegante e altamente eficiente.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
