@@ -4,10 +4,10 @@ Um sistema web completo, responsivo e profissional que funciona como um professo
 
 O aplicativo utiliza **modelos de linguagem open-source totalmente gratuitos** (como Llama 3 e Qwen 2.5) rodando através de APIs compatíveis com o OpenAI (como OpenRouter e Groq), garantindo independência de serviços proprietários pagos.
 
-<img width="1048" height="624" alt="03" src="https://github.com/user-attachments/assets/cac7e286-4748-43b2-9225-e978a1d25be1" />
-<img width="1040" height="626" alt="02" src="https://github.com/user-attachments/assets/ee06941e-2565-43ed-8532-1432e2dece1f" />
-<img width="1057" height="630" alt="01" src="https://github.com/user-attachments/assets/0787c0a4-45ea-4db9-bf89-1990ef7e6205" />
-<img width="1044" height="629" alt="04" src="https://github.com/user-attachments/assets/731b3d51-f04c-4807-bb76-4254f6118b85" />
+<img width="1057" height="630" alt="01" src="https://github.com/user-attachments/assets/e2c62ecd-793f-4840-8791-76f1891f2e1d" />
+<img width="1040" height="626" alt="02" src="https://github.com/user-attachments/assets/9b1e5c35-0124-49c5-8170-755d255785bb" />
+<img width="1048" height="624" alt="03" src="https://github.com/user-attachments/assets/b3afb6cb-e806-40fd-a912-249c37b1e089" />
+<img width="1044" height="629" alt="04" src="https://github.com/user-attachments/assets/ccda5bec-f000-4df5-95f3-00012182f586" />
 
 ---
 
