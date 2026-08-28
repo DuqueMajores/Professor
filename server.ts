@@ -28,7 +28,7 @@ function getAI(): GoogleGenAI {
 }
 
 async function startServer() {
-  const app = reportExpressErrors(express());
+  const app = express();
   const PORT = 3000;
 
   app.use(express.json());
@@ -223,17 +223,73 @@ Do not include any markdown formatting, code blocks, or extra comments outside o
     });
   }
 
+  // Register Express error handling middleware at the very end
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error("Express Error Handler:", err);
+
+    let message = err.message || "Ocorreu um erro interno no servidor.";
+    
+    // Check if the error indicates quota exceeded / rate limit / 429
+    const isQuota = 
+      err.status === 429 || 
+      err.statusCode === 429 || 
+      message.includes("429") ||
+      message.includes("quota") || 
+      message.includes("quotaExceeded") ||
+      message.includes("RESOURCE_EXHAUSTED") ||
+      message.includes("limit") ||
+      (err.error && (err.error.status === "RESOURCE_EXHAUSTED" || err.error.code === 429));
+
+    const isKeyInvalid = 
+      err.status === 400 || 
+      err.status === 401 || 
+      err.status === 403 ||
+      message.includes("API_KEY_INVALID") || 
+      message.includes("key is invalid") || 
+      (message.includes("not found") && message.includes("API"));
+
+    if (isQuota) {
+      return res.status(429).json({
+        error: "QUOTA_EXHAUSTED",
+        message: "O limite de uso ou cota diária gratuita do Gemini foi temporariamente excedido. Por favor, tente novamente em alguns segundos ou adicione uma chave de API nas configurações."
+      });
+    }
+
+    if (isKeyInvalid) {
+      return res.status(401).json({
+        error: "INVALID_API_KEY",
+        message: "A chave de API configurada é inválida ou expirou. Por favor, revise as suas configurações e tente novamente."
+      });
+    }
+
+    // If it is a stringified JSON containing an error message, extract it
+    if (typeof message === "string" && message.startsWith("{") && message.endsWith("}")) {
+      try {
+        const parsed = JSON.parse(message);
+        if (parsed.error && parsed.error.message) {
+          message = parsed.error.message;
+        } else if (parsed.message) {
+          message = parsed.message;
+        }
+      } catch (e) {
+        // Not valid JSON, keep original
+      }
+    }
+
+    // Limit length and keep it human readable
+    if (message.length > 250) {
+      message = message.substring(0, 247) + "...";
+    }
+
+    res.status(500).json({
+      error: "INTERNAL_ERROR",
+      message: message
+    });
+  });
+
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`[Professor API] Servidor rodando na porta ${PORT}`);
   });
-}
-
-function reportExpressErrors(app: express.Express) {
-  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    console.error("Express Error Handler:", err);
-    res.status(500).json({ error: "INTERNAL_ERROR", message: err.message || "Ocorreu um erro no servidor." });
-  });
-  return app;
 }
 
 startServer();

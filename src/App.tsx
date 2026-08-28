@@ -199,6 +199,27 @@ export default function App() {
     localStorage.removeItem("professor_exercise_state_v2");
   };
 
+  // Auxiliar para tratar erros de API com segurança, evitando erro de parsing de JSON (DOCTYPE html)
+  const safeGetApiError = async (res: Response, defaultMsg: string): Promise<string> => {
+    try {
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        const errData = await res.json();
+        if (errData.error === "API_KEY_MISSING") {
+          return "key_missing";
+        }
+        return errData.message || defaultMsg;
+      }
+      const text = await res.text();
+      if (text.includes("<!DOCTYPE") || text.includes("<html")) {
+        return `${defaultMsg} (Servidor retornou erro HTML: ${res.status})`;
+      }
+      return text.substring(0, 100) || `${defaultMsg} (${res.status})`;
+    } catch {
+      return `${defaultMsg} (Status ${res.status})`;
+    }
+  };
+
   // Iniciar novo exercício Fale Sobre
   const handleStartExercise = async () => {
     setIsLoading(true);
@@ -216,13 +237,13 @@ export default function App() {
       });
 
       if (!res.ok) {
-        const errData = await res.json();
-        if (errData.error === "API_KEY_MISSING") {
+        const errorMsg = await safeGetApiError(res, "Erro ao iniciar exercício");
+        if (errorMsg === "key_missing") {
           setApiError("key_missing");
           setIsLoading(false);
           return;
         }
-        throw new Error(errData.message || "Erro ao iniciar exercício");
+        throw new Error(errorMsg);
       }
 
       const data = await res.json();
@@ -288,13 +309,13 @@ export default function App() {
       });
 
       if (!res.ok) {
-        const errData = await res.json();
-        if (errData.error === "API_KEY_MISSING") {
+        const errorMsg = await safeGetApiError(res, "Erro na avaliação");
+        if (errorMsg === "key_missing") {
           setApiError("key_missing");
           setIsLoading(false);
           return;
         }
-        throw new Error(errData.message || "Erro na avaliação");
+        throw new Error(errorMsg);
       }
 
       const data = await res.json();
@@ -365,13 +386,13 @@ export default function App() {
       });
 
       if (!res.ok) {
-        const errData = await res.json();
-        if (errData.error === "API_KEY_MISSING") {
+        const errorMsg = await safeGetApiError(res, "Erro na conversa");
+        if (errorMsg === "key_missing") {
           setApiError("key_missing");
           setIsLoading(false);
           return;
         }
-        throw new Error(errData.message || "Erro na conversa");
+        throw new Error(errorMsg);
       }
 
       const data = await res.json();
