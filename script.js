@@ -336,6 +336,17 @@ function normalizeLanguage(langName) {
   return "en";
 }
 
+// Translate and format API/CORS connection errors to look helpful inside the app
+function formatError(err) {
+  if (!err) return "Erro desconhecido.";
+  const msg = err.message || String(err);
+  if (msg === "key_missing") return "key_missing";
+  if (msg.includes("Failed to fetch") || msg.toLowerCase().includes("fetch")) {
+    return "Não foi possível conectar ao Ollama local. Certifique-se de que o Ollama está rodando no seu computador e com o CORS ativado (siga as instruções passo a passo na aba de Conexão Local).";
+  }
+  return msg;
+}
+
 // Initial Loading of LocalStorage
 function loadLocalStorage() {
   try {
@@ -725,11 +736,7 @@ Respond ONLY with the raw JSON string. Do not include markdown backticks or extr
     saveStateToLocalStorage();
   } catch (err) {
     console.error(err);
-    if (err.message === "key_missing") {
-      state.apiError = "key_missing";
-    } else {
-      state.apiError = err.message || "Não foi possível conectar-se ao professor.";
-    }
+    state.apiError = formatError(err);
     state.isLoading = false;
   }
   render();
@@ -838,11 +845,7 @@ Do not include any markdown formatting or code blocks outside of the JSON.`;
     saveStateToLocalStorage();
   } catch (err) {
     console.error(err);
-    if (err.message === "key_missing") {
-      state.apiError = "key_missing";
-    } else {
-      state.apiError = err.message || "Não foi possível conectar-se ao professor.";
-    }
+    state.apiError = formatError(err);
     state.isLoading = false;
   }
   render();
@@ -931,11 +934,7 @@ Your message structure should always be:
     saveStateToLocalStorage();
   } catch (err) {
     console.error(err);
-    if (err.message === "key_missing") {
-      state.apiError = "key_missing";
-    } else {
-      state.apiError = err.message || "Erro na comunicação local.";
-    }
+    state.apiError = formatError(err);
     state.isLoading = false;
   }
   render();
@@ -998,11 +997,7 @@ Provide explanations in both the student's native language ("${state.userLanguag
     saveStateToLocalStorage();
   } catch (err) {
     console.error(err);
-    if (err.message === "key_missing") {
-      state.apiError = "key_missing";
-    } else {
-      state.apiError = err.message || "Erro ao conectar.";
-    }
+    state.apiError = formatError(err);
     state.isLoading = false;
   }
   render();
@@ -1120,18 +1115,14 @@ function render() {
           <div class="space-y-1">
             <button onclick="switchTab('fale_sobre')" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all ${state.activeTab === 'fale_sobre' ? 'bg-black text-white shadow-sm' : 'text-neutral-600 hover:bg-[#F8F8F8] hover:text-black'}">
               <i data-lucide="sparkles" class="w-4 h-4"></i>
-              <span>${dict.faleSobre || "Fale Sobre"}</span>
-            </button>
-            <button onclick="switchTab('ollama')" class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all ${state.activeTab === 'ollama' ? 'bg-black text-white shadow-sm' : 'text-neutral-600 hover:bg-[#F8F8F8] hover:text-black'}">
-              <i data-lucide="cpu" class="w-4 h-4"></i>
-              <span>Ollama Local</span>
+              <span>${dict.faleSobre || "Speak About"}</span>
             </button>
           </div>
         </div>
 
         <div>
           <p class="text-[10px] uppercase tracking-widest text-[#999999] mb-4 font-bold">
-            ${uiLangCode === 'ja' ? '準備中' : 'Aulas Teóricas'}
+            ${uiLangCode === 'ja' ? '準備中' : 'Futuros Exercícios'}
           </p>
           <div class="space-y-1">
             ${['conversacao', 'vocabulario', 'gramatica', 'traducao', 'escuta', 'pronuncia', 'revisao'].map(tab => `
@@ -1147,40 +1138,10 @@ function render() {
         </div>
       </nav>
 
-      <!-- Sidebar Footer -->
-      <div class="p-6 border-t border-[#EDEDED] space-y-4 flex-shrink-0">
-        <!-- Target Language display card -->
-        <div class="p-4 bg-[#F8F8F8] border border-[#EDEDED] rounded-xl text-left">
-          <p class="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Estudando</p>
-          <p class="text-xs font-bold text-black capitalize">${state.userLanguages.target}</p>
-          <div class="flex items-center justify-between mt-2 pt-2 border-t border-neutral-200">
-            <span class="text-[9px] uppercase tracking-wider text-slate-400 font-bold">Nível</span>
-            <span class="text-[10px] bg-white border border-[#EDEDED] px-2 py-0.5 rounded-full font-bold text-neutral-800">${state.userLanguages.level}</span>
-          </div>
-        </div>
-
-        <!-- UI Translation Language Selector -->
-        <div class="flex flex-col gap-1 text-left">
-          <span class="text-[9px] uppercase tracking-wider text-slate-400 font-bold mb-1">Traduzir Interface</span>
-          <div class="grid grid-cols-2 gap-1 p-0.5 bg-neutral-100 rounded-lg">
-            <button onclick="toggleUILanguage('target')" class="py-1 text-[10px] font-bold rounded-md transition-all capitalize ${state.activeUILanguage === 'target' ? 'bg-white text-black shadow-sm' : 'text-neutral-500'}">
-              ${state.userLanguages.target.substring(0, 8)}
-            </button>
-            <button onclick="toggleUILanguage('source')" class="py-1 text-[10px] font-bold rounded-md transition-all capitalize ${state.activeUILanguage === 'source' ? 'bg-white text-black shadow-sm' : 'text-neutral-500'}">
-              ${state.userLanguages.source.substring(0, 8)}
-            </button>
-          </div>
-        </div>
-
-        <!-- Reset Settings Button -->
-        <button onclick="handleLanguageReset()" class="w-full py-2.5 px-4 bg-white hover:bg-neutral-50 border border-neutral-200 hover:border-black text-[#666666] hover:text-black transition-all rounded-xl text-[10px] font-bold uppercase tracking-wider cursor-pointer">
-          Redefinir Idioma
-        </button>
-      </div>
     </aside>
 
     <!-- Content Workspace -->
-    <main class="flex-1 flex flex-col h-full overflow-hidden min-w-0 bg-[#FAFAFA]">
+    <main class="flex-1 flex flex-col h-full overflow-hidden min-w-0 bg-[#FAFAFA] relative">
       ${state.activeTab === "ollama" ? renderOllamaTabHtml() : renderFaleSobreTabHtml()}
     </main>
   `;
@@ -1227,50 +1188,67 @@ function renderFaleSobreTabHtml() {
   return `
     <!-- Top Header Bar -->
     <header class="min-h-20 py-3 md:py-0 border-b border-[#EDEDED] bg-white flex flex-col md:flex-row md:items-center justify-between px-6 md:px-10 flex-shrink-0 z-10 gap-3 md:gap-0">
-      <div class="flex flex-wrap items-center gap-2 md:gap-3 w-full md:w-auto">
+      <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
         <button onclick="toggleSidebar(true)" class="md:hidden p-2 border border-[#EDEDED] rounded-full text-black hover:bg-[#F8F8F8] cursor-pointer flex-shrink-0">
           <i data-lucide="menu" class="w-4 h-4"></i>
         </button>
-        <div class="flex items-center space-x-2 text-xs text-[#666666] flex-shrink-0">
-          <span class="font-semibold text-black">${dict.faleSobre}</span>
-          <span>/</span>
-          <span class="capitalize">${state.userLanguages.target}</span>
+        
+        <!-- 1. Nome do Modo e exercício (no caso "Speak About"), barra / o idioma -->
+        <div class="flex items-center space-x-2 text-xs text-[#666666] flex-shrink-0 mr-1">
+          <span class="font-bold text-black text-sm">${dict.faleSobre || "Speak About"}</span>
+          <span class="text-neutral-300 font-medium">/</span>
+          <span class="capitalize font-semibold text-neutral-700">${state.userLanguages.target}</span>
         </div>
 
-        <!-- AI Engine Selector -->
-        <div class="flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-medium bg-[#FAFAFA] border-[#EDEDED] flex-shrink-0">
-          <select id="engine-select" onchange="toggleEngine(this.value)" class="bg-transparent font-semibold border-none text-xs focus:outline-none cursor-pointer">
-            <option value="gemini" ${!state.useLocalAI ? 'selected' : ''}>Cloud (Gemini API)</option>
-            <option value="ollama" ${state.useLocalAI ? 'selected' : ''}>Local (Ollama PC)</option>
+        <!-- 2. O input de escolha "Local (Ollama)" ou "Cloud (Gemini)" -->
+        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold bg-[#FAFAFA] border-[#EDEDED] flex-shrink-0">
+          <select id="engine-select" onchange="toggleEngine(this.value)" class="bg-transparent border-none text-xs text-slate-700 py-0.5 px-1 focus:outline-none cursor-pointer outline-none font-bold">
+            <option value="ollama" ${state.useLocalAI ? 'selected' : ''}>Local (Ollama)</option>
+            <option value="gemini" ${!state.useLocalAI ? 'selected' : ''}>Cloud (Gemini)</option>
           </select>
         </div>
       </div>
 
       <div class="flex flex-wrap items-center gap-2 w-full md:w-auto md:justify-end">
-        <!-- Configure Gemini Key Button -->
+        <!-- 3. Nova Lição Button -->
+        <button onclick="handleStartExercise()" class="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-xs font-semibold transition-all shadow-sm cursor-pointer">
+          <i data-lucide="play" class="w-2.5 h-2.5 fill-white text-white"></i>
+          <span>Nova Lição</span>
+        </button>
+
+        <!-- 4. Bate-papo Livre Button -->
+        <button onclick="handleSendTextMessage('Quero conversar um pouco')" class="px-4 py-2 bg-[#EDF5FD] hover:bg-[#D6E6F7] text-[#1E3A8A] border border-[#D6E6F7] rounded-full text-xs font-semibold transition-all cursor-pointer shadow-sm">
+          Bate-papo Livre
+        </button>
+
+        <!-- Configure Gemini Key Button (helper when Gemini selected) -->
         ${!state.useLocalAI ? `
-          <button onclick="openApiKeyModal()" class="flex items-center space-x-1.5 px-3 py-1.5 border border-[#EDEDED] rounded-full text-xs font-bold bg-white text-neutral-800 hover:border-black cursor-pointer transition-all shadow-sm">
+          <button onclick="openApiKeyModal()" class="flex items-center space-x-1.5 px-3 py-1.5 border border-[#EDEDED] rounded-full text-xs font-bold bg-white text-neutral-800 hover:border-black cursor-pointer transition-all shadow-sm mr-1">
             <i data-lucide="key" class="w-3.5 h-3.5 text-neutral-500"></i>
             <span>${state.geminiApiKey ? 'Editar Chave' : 'Configurar Chave'}</span>
           </button>
-        ` : `
-          <!-- Quick jump config for Ollama -->
-          <button onclick="switchTab('ollama')" class="flex items-center space-x-1.5 px-3 py-1.5 border border-[#EDEDED] rounded-full text-xs font-bold bg-white text-neutral-800 hover:border-black cursor-pointer transition-all shadow-sm">
-            <i data-lucide="cpu" class="w-3.5 h-3.5 text-neutral-500"></i>
-            <span>Conexão Local</span>
-          </button>
-        `}
+        ` : ''}
 
-        <!-- Reset Chat Button -->
+        <!-- Conexão Local Button (Icon Only) -->
+        <button onclick="switchTab('ollama')" class="p-2 border border-[#EDEDED] rounded-full hover:bg-black hover:text-white transition-colors cursor-pointer text-[#666666] hover:text-white" title="Conexão Local (Ollama)">
+          <i data-lucide="cpu" class="w-3.5 h-3.5"></i>
+        </button>
+
+        <!-- 6. Traduzir Interface Icon Button -->
+        <button onclick="toggleUILanguage(state.activeUILanguage === 'target' ? 'source' : 'target')" class="p-2 border border-[#EDEDED] rounded-full hover:bg-black hover:text-white transition-colors cursor-pointer text-[#666666] hover:text-white" title="Traduzir Interface">
+          <i data-lucide="languages" class="w-3.5 h-3.5"></i>
+        </button>
+
+        <!-- 7. Limpar Tudo Button -->
         <button onclick="handleClearChat()" class="p-2 border border-[#EDEDED] rounded-full hover:bg-black hover:text-white transition-colors cursor-pointer text-[#999999]" title="Limpar Histórico do Chat">
           <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
         </button>
       </div>
     </header>
 
-    <!-- Conversation Feed Container -->
-    <div id="conversation-feed" class="flex-1 overflow-y-auto px-6 md:px-10 py-10 no-scrollbar">
-      <div class="max-w-3xl space-y-8 pb-36 mx-auto">
+    <!-- Conversation Feed Container (Aligned perfectly with left border) -->
+    <div id="conversation-feed" class="flex-1 overflow-y-auto pl-6 md:pl-10 pr-6 md:pr-12 py-10 no-scrollbar">
+      <div class="max-w-4xl space-y-8 pb-36 text-left">
         
         <!-- Key Missing Banner -->
         ${!state.useLocalAI && !state.geminiApiKey ? `
@@ -1444,23 +1422,13 @@ function renderFaleSobreTabHtml() {
             </button>
           </div>
         ` : ''}
-        
-        <!-- Bottom layout button to start exercise quickly if history is loaded but no exercise active -->
-        ${state.messages.length > 0 && state.exerciseState.phase === 'none' ? `
-          <div class="flex justify-center pt-2">
-            <button onclick="handleStartExercise()" class="inline-flex items-center gap-2 px-5 py-2.5 border border-[#EDEDED] hover:border-black bg-white text-black text-xs font-bold uppercase tracking-wider rounded-full transition-all shadow-sm cursor-pointer">
-              <i data-lucide="book-open" class="w-3.5 h-3.5 text-neutral-500"></i>
-              <span>Iniciar Nova Lição</span>
-            </button>
-          </div>
-        ` : ''}
 
       </div>
     </div>
 
     <!-- Input Dock form area bottom aligned -->
-    <div class="absolute bottom-0 inset-x-0 bg-white border-t border-[#EDEDED] h-24 flex items-center px-6 md:px-10 z-10">
-      <div class="w-full max-w-3xl relative space-y-2 mx-auto">
+    <div class="absolute bottom-0 inset-x-0 bg-white border-t border-[#EDEDED] h-24 flex items-center pl-6 md:pl-10 pr-6 md:pr-12 z-10">
+      <div class="w-full max-w-4xl relative space-y-2">
         
         <!-- Active context indicator overlay -->
         ${state.exerciseState.phase === 'active' ? `
@@ -1812,19 +1780,62 @@ function renderOllamaTabHtml() {
             </div>
           </div>
 
-          <div class="mt-8 p-4 bg-blue-50 border border-blue-100 rounded-xl flex gap-3 text-xs text-neutral-700">
-            <i data-lucide="terminal" class="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5"></i>
-            <div class="space-y-1.5">
-              <p class="font-bold text-neutral-900">Primeira vez configurando? Habilite o CORS em 30 segundos:</p>
-              <p class="leading-relaxed">
-                1. Feche o Ollama (clique direito no ícone da lhama no sistema e selecione <strong>Quit</strong>).<br>
-                2. Abra o seu <strong>Terminal de comando</strong> (PowerShell no Windows, Terminal no Mac/Linux).<br>
-                3. Execute o comando de liberação de origem:<br>
-                <code class="block mt-1 p-2 bg-neutral-900 text-neutral-200 rounded font-mono text-[10px] select-all">$env:OLLAMA_ORIGINS="*" ; ollama serve</code>
-                <span class="text-[10px] text-neutral-500 italic">(Mac ou Linux: OLLAMA_ORIGINS="*" ollama serve)</span><br>
-                4. Agora instale o modelo super leve recomendado digitando no terminal:
-                <code class="block mt-1 p-2 bg-neutral-900 text-neutral-200 rounded font-mono text-[10px] select-all">ollama pull llama3.2</code>
-              </p>
+          <div class="mt-8 p-6 bg-blue-50 border border-blue-100 rounded-xl space-y-4 text-xs text-neutral-700">
+            <div class="flex gap-3">
+              <i data-lucide="terminal" class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5"></i>
+              <p class="font-bold text-neutral-900 text-sm">Primeira vez configurando? Habilite o CORS para comunicação segura:</p>
+            </div>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-2">
+              <!-- Windows Steps -->
+              <div class="space-y-2 bg-white/60 p-4 rounded-lg border border-blue-100/50 flex flex-col justify-between">
+                <div>
+                  <span class="inline-block px-2 py-0.5 bg-blue-600 text-white rounded text-[10px] font-bold uppercase mb-2">Windows</span>
+                  <ol class="list-decimal pl-4 space-y-1.5 text-neutral-700 text-[11px] leading-relaxed">
+                    <li>Feche o Ollama clicando com o botão direito no ícone da lhama na barra de tarefas (perto do relógio) e selecionando <strong>Quit</strong>.</li>
+                    <li>Se estiver usando o <strong>PowerShell</strong>, execute:</li>
+                    <code class="block p-1.5 bg-neutral-900 text-neutral-200 rounded font-mono text-[9px] select-all">$env:OLLAMA_ORIGINS="*" ; ollama serve</code>
+                    <li>Se estiver usando o <strong>Prompt de Comando (CMD)</strong> tradicional, execute:</li>
+                    <code class="block p-1.5 bg-neutral-900 text-neutral-200 rounded font-mono text-[9px] select-all">set OLLAMA_ORIGINS=* && ollama serve</code>
+                    <li>Em uma nova aba ou janela de terminal, baixe o modelo recomendado:</li>
+                    <code class="block p-1.5 bg-neutral-900 text-neutral-200 rounded font-mono text-[9px] select-all">ollama pull llama3.2</code>
+                  </ol>
+                </div>
+              </div>
+
+              <!-- macOS Steps -->
+              <div class="space-y-2 bg-white/60 p-4 rounded-lg border border-blue-100/50 flex flex-col justify-between">
+                <div>
+                  <span class="inline-block px-2 py-0.5 bg-neutral-800 text-white rounded text-[10px] font-bold uppercase mb-2">macOS</span>
+                  <ol class="list-decimal pl-4 space-y-1.5 text-neutral-700 text-[11px] leading-relaxed">
+                    <li>Feche o Ollama clicando no ícone do menu superior e selecionando <strong>Quit</strong>.</li>
+                    <li>Abra o seu <strong>Terminal</strong> e configure a variável global de CORS executando:</li>
+                    <code class="block p-1.5 bg-neutral-900 text-neutral-200 rounded font-mono text-[9px] select-all">launchctl setenv OLLAMA_ORIGINS "*"</code>
+                    <li>Inicie o Ollama via terminal para carregar as alterações:</li>
+                    <code class="block p-1.5 bg-neutral-900 text-neutral-200 rounded font-mono text-[9px] select-all">OLLAMA_ORIGINS="*" ollama serve</code>
+                    <li>Baixe o modelo em uma nova aba do terminal:</li>
+                    <code class="block p-1.5 bg-neutral-900 text-neutral-200 rounded font-mono text-[9px] select-all">ollama pull llama3.2</code>
+                  </ol>
+                </div>
+              </div>
+
+              <!-- Linux Steps -->
+              <div class="space-y-2 bg-white/60 p-4 rounded-lg border border-blue-100/50 flex flex-col justify-between">
+                <div>
+                  <span class="inline-block px-2 py-0.5 bg-orange-600 text-white rounded text-[10px] font-bold uppercase mb-2">Linux</span>
+                  <ol class="list-decimal pl-4 space-y-1.5 text-neutral-700 text-[11px] leading-relaxed">
+                    <li>Se o Ollama estiver rodando como um serviço do systemd, edite o arquivo de configuração executando:</li>
+                    <code class="block p-1.5 bg-neutral-900 text-neutral-200 rounded font-mono text-[9px] select-all">sudo systemctl edit ollama</code>
+                    <li>Adicione estas linhas no editor que abrir:</li>
+                    <pre class="block p-1.5 bg-neutral-900 text-neutral-200 rounded font-mono text-[9px] whitespace-pre">[Service]
+Environment="OLLAMA_ORIGINS=*"</pre>
+                    <li>Recarregue o systemd e reinicie o serviço:</li>
+                    <code class="block p-1.5 bg-neutral-900 text-neutral-200 rounded font-mono text-[9px] select-all">sudo systemctl daemon-reload && sudo systemctl restart ollama</code>
+                    <li>Baixe o modelo pelo terminal:</li>
+                    <code class="block p-1.5 bg-neutral-900 text-neutral-200 rounded font-mono text-[9px] select-all">ollama pull llama3.2</code>
+                  </ol>
+                </div>
+              </div>
             </div>
           </div>
         </div>
