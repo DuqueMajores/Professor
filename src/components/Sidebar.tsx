@@ -1,5 +1,5 @@
 import { UIStringDictionary, UserLanguages } from "../types";
-import { X } from "lucide-react";
+import { X, Cpu } from "lucide-react";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -21,7 +21,7 @@ export default function Sidebar({ isOpen, onClose, dict, userLanguages }: Sideba
   ];
 
   const sidebarContent = (
-    <div className="flex flex-col h-full bg-white border-r border-[#EDEDED] py-10 px-8">
+    <div className="flex flex-col h-full bg-white border-r border-[#EDEDED] py-10 px-8 text-left">
       {/* Header / Brand */}
       <div className="mb-12 flex items-center justify-between">
         <div>
@@ -33,16 +33,19 @@ export default function Sidebar({ isOpen, onClose, dict, userLanguages }: Sideba
         {/* Mobile Close Button */}
         <button
           onClick={onClose}
-          className="md:hidden p-1 rounded-md text-[#999999] hover:text-black transition-colors"
+          className="md:hidden p-1 rounded-md text-[#999999] hover:text-black transition-colors cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-8 overflow-y-auto pr-2">
+      <nav 
+        className="flex-1 space-y-8 overflow-y-auto pr-2 [&::-webkit-scrollbar]:hidden"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+      >
         <div>
-          <p className="text-[10px] uppercase tracking-widest text-[#999999] mb-4">
+          <p className="text-[10px] uppercase tracking-widest text-[#999999] mb-4 font-bold">
             {dict.studySection || "Étude"}
           </p>
           <ul className="space-y-1">
@@ -57,7 +60,7 @@ export default function Sidebar({ isOpen, onClose, dict, userLanguages }: Sideba
             {/* Modalidades Futuras (Preparadas na Arquitetura) */}
             {futureModes.map((mode, idx) => (
               <li key={idx}>
-                <div className="flex items-center py-2 text-sm text-[#999999] opacity-50 cursor-not-allowed">
+                <div className="flex items-center py-2.5 text-sm text-[#999999] opacity-50 cursor-not-allowed">
                   <span className="w-1.5 h-1.5 border border-[#999999] rounded-full mr-3" />
                   <span>{mode.name}</span>
                 </div>

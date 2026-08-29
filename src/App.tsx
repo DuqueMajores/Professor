@@ -3,6 +3,7 @@ import { UserLanguages, ChatMessage, MessageType, ExerciseStartData, ExerciseFee
 import { translations, normalizeLanguage } from "./utils/translations";
 import LanguageSelector from "./components/LanguageSelector";
 import Sidebar from "./components/Sidebar";
+import OllamaSection from "./components/OllamaSection";
 import { 
   Menu, 
   Send, 
@@ -16,7 +17,8 @@ import {
   ArrowLeft,
   HelpCircle,
   Play,
-  RotateCcw
+  RotateCcw,
+  Cpu
 } from "lucide-react";
 
 // Helper functions to extract incorrect phrases from professor corrections and highlight them
@@ -84,6 +86,24 @@ export default function App() {
     const stored = localStorage.getItem("professor_languages");
     return stored ? JSON.parse(stored) : null;
   });
+
+  // Estados para Navegação de Abas e IA Local
+  const [activeTab, setActiveTab] = useState<"fale_sobre" | "ollama">("fale_sobre");
+  const [useLocalAI, setUseLocalAI] = useState<boolean>(() => {
+    const stored = localStorage.getItem("professor_use_local_ai");
+    return stored === "true";
+  });
+  const [activeLocalModel, setActiveLocalModel] = useState<string>(() => {
+    const stored = localStorage.getItem("professor_active_local_model");
+    return stored || "llama3";
+  });
+
+  const handleSetUseLocalAI = (useLocal: boolean, modelName: string) => {
+    setUseLocalAI(useLocal);
+    setActiveLocalModel(modelName);
+    localStorage.setItem("professor_use_local_ai", String(useLocal));
+    localStorage.setItem("professor_active_local_model", modelName);
+  };
 
   // Idioma ativo na interface: "target" (o que está aprendendo) ou "source" (origem)
   const [activeUILanguage, setActiveUILanguage] = useState<"target" | "source">("target");
@@ -220,12 +240,89 @@ export default function App() {
     }
   };
 
+  const handleLocalAIError = (err: any) => {
+    console.error("Local AI Error:", err);
+    const isFetchError = err.message?.includes("fetch") || err.message?.includes("Failed to fetch") || err.message?.includes("NetworkError");
+    if (isFetchError) {
+      setApiError(
+        `Erro de Conexão / CORS. O navegador bloqueou a requisição para o seu Ollama local. Como habilitar o acesso em 30 segundos:\n\n` +
+        `1. Feche o Ollama (clique direito no ícone de lhama na barra de tarefas / menu superior e selecione 'Quit').\n` +
+        `2. Abra o Terminal do seu sistema (PowerShell no Windows, Terminal no Mac ou Linux).\n` +
+        `3. Execute o comando de liberação de origem:\n` +
+        `   • No Windows (PowerShell): $env:OLLAMA_ORIGINS="*" ; ollama serve\n` +
+        `   • No macOS ou Linux: OLLAMA_ORIGINS="*" ollama serve\n` +
+        `4. Mantenha essa janela do terminal aberta, recarregue a página e tente novamente.`
+      );
+    } else {
+      setApiError(err.message || "Erro desconhecido na comunicação local");
+    }
+  };
+
   // Iniciar novo exercício Fale Sobre
   const handleStartExercise = async () => {
     setIsLoading(true);
     setApiError(null);
 
     try {
+      if (useLocalAI) {
+        const prompt = `You are a professional language teacher. 
+Generate a level-appropriate writing topic/exercise for a student studying "${userLanguages.target}".
+The student's level is "${userLanguages.level}".
+
+Generate a creative topic in "${userLanguages.target}". It could be about daily routines, travel, family, hobbies, opinion on a simple matter, or a hypothetical situation.
+
+You MUST respond strictly with a valid JSON object matching this schema:
+{
+  "text": "The theme/topic title in ${userLanguages.target}",
+  "instruction": "Detailed instructions on what the student should write about, entirely in ${userLanguages.target}"
+}
+
+Respond ONLY with the raw JSON string. Do not include markdown backticks or extra formatting.`;
+
+        const res = await fetch("http://127.0.0.1:11434/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          mode: "cors",
+          body: JSON.stringify({
+            model: activeLocalModel,
+            prompt: prompt,
+            format: "json",
+            stream: false
+          })
+        });
+
+        if (!res.ok) {
+          throw new Error(`Erro na API local do Ollama (Status ${res.status}). Abra o app Ollama no seu computador.`);
+        }
+
+        const dataText = await res.json();
+        const data = JSON.parse(dataText.response || "{}");
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `ex_start_${Date.now()}`,
+            role: "assistant",
+            content: data.instruction || `Vamos praticar escrevendo sobre ${data.text || "rotina"}.`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            type: "exercise_start",
+            exerciseData: {
+              text: data.text || "Minhas Férias",
+              instruction: data.instruction || "Por favor, escreva um pequeno parágrafo falando sobre as suas férias dos sonhos.",
+            },
+          },
+        ]);
+
+        setExerciseState({
+          phase: "active",
+          topic: data.text || "Minhas Férias",
+          instruction: data.instruction || "Por favor, escreva um pequeno parágrafo falando sobre as suas férias dos sonhos.",
+          lastAnswer: "",
+        });
+        setIsLoading(false);
+        return;
+      }
+
       const res = await fetch("/api/exercise/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -271,7 +368,11 @@ export default function App() {
       });
     } catch (err: any) {
       console.error(err);
-      setApiError(err.message || "generic");
+      if (useLocalAI) {
+        handleLocalAIError(err);
+      } else {
+        setApiError(err.message || "generic");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -297,6 +398,85 @@ export default function App() {
     ]);
 
     try {
+      if (useLocalAI) {
+        const prompt = `You are a professional language teacher of "${userLanguages.target}". 
+A student of level "${userLanguages.level}" has submitted a text on the topic: "${exerciseState.topic}".
+Their answer is: "${answer}".
+
+Your job is to check their text for errors (grammar, spelling, vocabulary, prepositions, particles, word order, etc.) in "${userLanguages.target}".
+Specifically identify wrong words or phrases, suggest corrections, and explain them briefly in "${userLanguages.target}".
+
+If they have errors:
+- set "hasErrors" to true.
+- fill "corrections" array.
+- write an encouraging message in "message" entirely in "${userLanguages.target}", politely pointing out that they have some mistakes and explicitly asking them to rewrite their answer and submit it again to practice (e.g. "Excellent try! Please rewrite your text correcting the wrong words and try again.").
+
+If they have absolutely NO errors and their text is natural and perfect:
+- set "hasErrors" to false.
+- keep "corrections" empty.
+- write a celebratory message in "message" entirely in "${userLanguages.target}" praising their flawless writing and saying they are ready for a new exercise.
+
+You MUST respond strictly with a valid JSON object matching this schema:
+{
+  "hasErrors": boolean,
+  "corrections": [
+    {
+      "original": "the exact wrong word or phrase from the student's answer",
+      "corrected": "the corrected word or phrase in ${userLanguages.target}",
+      "explanation": "brief, clear explanation of why it was wrong and how it was fixed, written completely in ${userLanguages.target}"
+    }
+  ],
+  "message": "The professor's message to the student, written completely in ${userLanguages.target}"
+}
+
+Respond ONLY with raw JSON, no markdown formatting.`;
+
+        const res = await fetch("http://127.0.0.1:11434/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          mode: "cors",
+          body: JSON.stringify({
+            model: activeLocalModel,
+            prompt: prompt,
+            format: "json",
+            stream: false
+          })
+        });
+
+        if (!res.ok) {
+          throw new Error(`Erro na API local do Ollama (Status ${res.status}). Abra o app Ollama no seu computador.`);
+        }
+
+        const dataText = await res.json();
+        const data = JSON.parse(dataText.response || "{}");
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `ex_feedback_${Date.now()}`,
+            role: "assistant",
+            content: data.message || "Excelente tentativa! Continue estudando.",
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            type: "exercise_feedback",
+            exerciseData: {
+              hasErrors: data.hasErrors ?? false,
+              corrections: data.corrections || [],
+              message: data.message || "Muito bem!",
+              topic: exerciseState.topic,
+              studentAnswer: answer
+            },
+          },
+        ]);
+
+        setExerciseState((prev) => ({
+          ...prev,
+          phase: data.hasErrors ? "active" : "none",
+          lastAnswer: answer,
+        }));
+        setIsLoading(false);
+        return;
+      }
+
       const res = await fetch("/api/exercise/evaluate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -339,7 +519,11 @@ export default function App() {
       }));
     } catch (err: any) {
       console.error(err);
-      setApiError(err.message || "generic");
+      if (useLocalAI) {
+        handleLocalAIError(err);
+      } else {
+        setApiError(err.message || "generic");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -364,6 +548,71 @@ export default function App() {
     setMessages((prev) => [...prev, userMsg]);
 
     try {
+      if (useLocalAI) {
+        // Pega histórico recente para dar contexto à IA
+        const recentHistory = messages
+          .filter((m) => m.type === "text")
+          .slice(-6)
+          .map((m) => ({
+            role: m.role,
+            content: m.content,
+          }));
+
+        const prompt = `You are a professional, helpful, and friendly personal language teacher.
+The student's native/source language is "${userLanguages.source}".
+The student is learning "${userLanguages.target}" and is currently at proficiency level: "${userLanguages.level}".
+
+CRITICAL DIRECTIVE: You must write your entire message in "${userLanguages.target}". Your greetings, feedback, and replies must be exclusively in "${userLanguages.target}". Do not use "${userLanguages.source}" unless explicitly asked for a translation or explanation.
+
+Your message structure should always be:
+1. If the student made any small spelling, grammar, punctuation, or word choice errors in their last message in "${userLanguages.target}", gently point out the corrections at the very beginning of your message in a highly readable, elegant, and polite way.
+2. Reply directly to the student's message in "${userLanguages.target}" to keep the conversation going naturally, keeping your vocabulary and syntax appropriate for their level (${userLanguages.level}).
+3. Ask a friendly, engaging follow-up question in "${userLanguages.target}" to prompt the student to write back.
+
+Current user message: "${text}"`;
+
+        const chatMessages = recentHistory.map(h => ({
+          role: h.role === "user" ? "user" : "assistant",
+          content: h.content
+        }));
+        
+        chatMessages.push({
+          role: "user",
+          content: prompt
+        });
+
+        const res = await fetch("http://127.0.0.1:11434/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          mode: "cors",
+          body: JSON.stringify({
+            model: activeLocalModel,
+            messages: chatMessages,
+            stream: false
+          })
+        });
+
+        if (!res.ok) {
+          throw new Error(`Erro na API local do Ollama (Status ${res.status}). Abra o app Ollama no seu computador.`);
+        }
+
+        const data = await res.json();
+        const responseText = data.message?.content || "Sem resposta do modelo local.";
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `assistant_chat_${Date.now()}`,
+            role: "assistant",
+            content: responseText,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            type: "text",
+          },
+        ]);
+        setIsLoading(false);
+        return;
+      }
+
       // Pega histórico recente para dar contexto à IA (filtra apenas mensagens de texto comuns para simplificar)
       const recentHistory = messages
         .filter((m) => m.type === "text")
@@ -409,7 +658,11 @@ export default function App() {
       ]);
     } catch (err: any) {
       console.error(err);
-      setApiError(err.message || "generic");
+      if (useLocalAI) {
+        handleLocalAIError(err);
+      } else {
+        setApiError(err.message || "generic");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -447,114 +700,180 @@ export default function App() {
       {/* Main Panel */}
       <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#FAFAFA] relative">
         
-        {/* Top Header Bar */}
-        <header className="h-20 border-b border-[#EDEDED] bg-white flex items-center justify-between px-6 md:px-10 flex-shrink-0 z-10">
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={() => setIsSidebarOpen(true)}
-              className="md:hidden p-2 border border-[#EDEDED] rounded-full text-black hover:bg-[#F8F8F8] cursor-pointer"
-            >
-              <Menu className="w-4 h-4" />
-            </button>
-            <div className="flex items-center space-x-2 text-xs text-[#666666]">
-              <span className="font-semibold text-black">{dict.faleSobre}</span>
-              <span>/</span>
-              <span className="capitalize">{userLanguages.target} ({userLanguages.level})</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {/* Voltar para seleção de idiomas */}
-            <button
-              onClick={handleLanguageReset}
-              className="flex items-center space-x-1 px-3 py-2 border border-[#EDEDED] rounded-full hover:bg-black hover:text-white transition-colors text-xs font-semibold text-[#666666] hover:text-white cursor-pointer"
-              title="Voltar para seleção de idiomas"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Alterar Idioma</span>
-            </button>
-
-            {/* Modalidade de Estudo / Botões de Ação no Topo */}
-            {exerciseState.phase === "none" ? (
-              <>
+        {activeTab === "ollama" ? (
+          <>
+            {/* Top Header Bar for Ollama Section */}
+            <header className="min-h-20 py-3 md:py-0 border-b border-[#EDEDED] bg-white flex flex-col sm:flex-row sm:items-center justify-between px-6 md:px-10 flex-shrink-0 z-10 gap-3">
+              <div className="flex flex-wrap items-center gap-2 md:gap-3">
                 <button
-                  onClick={handleStartExercise}
-                  disabled={isLoading}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-xs font-semibold transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                  onClick={() => setIsSidebarOpen(true)}
+                  className="md:hidden p-2 border border-[#EDEDED] rounded-full text-black hover:bg-[#F8F8F8] cursor-pointer"
                 >
-                  <Play className="w-2.5 h-2.5 fill-white text-white" />
-                  <span>{dict.startExercise}</span>
+                  <Menu className="w-4 h-4" />
                 </button>
-                
-                <button
-                  onClick={() => handleSendTextMessage("Quero conversar um pouco")}
-                  disabled={isLoading}
-                  className="px-4 py-2 bg-[#EDF5FD] hover:bg-[#D6E6F7] text-[#1E3A8A] border border-[#D6E6F7] rounded-full text-xs font-semibold transition-all cursor-pointer shadow-sm disabled:opacity-50"
-                >
-                  Bate-Papo Livre
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setExerciseState({
-                  phase: "none",
-                  originalText: "",
-                  instruction: "",
-                  firstAnswer: "",
-                  secondAnswer: "",
-                })}
-                className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-full text-xs font-semibold transition-all cursor-pointer shadow-sm"
-              >
-                Cancelar Exercício
-              </button>
-            )}
-
-            {/* Limpar Histórico do Chat */}
-            <button
-              onClick={handleClearChat}
-              className="p-2 border border-[#EDEDED] rounded-full hover:bg-black hover:text-white transition-colors cursor-pointer text-[#999999] hover:text-white"
-              title="Limpar Histórico do Chat"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </header>
-
-        {/* Conversation Feed */}
-        <div className="flex-1 overflow-y-auto px-6 md:px-10 py-10">
-          <div className="max-w-3xl space-y-8 pb-36">
-            
-            {/* API Error Warning Box */}
-            {apiError && (
-              <div className="p-4 bg-white border border-red-200 rounded-2xl flex flex-col gap-1.5 text-xs text-red-600 animate-in fade-in duration-200 shadow-sm">
-                <div className="flex gap-3 items-center">
-                  <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-                  <span className="font-semibold">
-                    {apiError === "key_missing" ? dict.apiKeyErrorTitle : dict.errorGeneric}
-                  </span>
+                <div className="flex items-center space-x-2 text-xs text-[#666666]">
+                  <span className="font-semibold text-black">IA Local — Ollama</span>
+                  <span>/</span>
+                  <span>Configuração & Conexão</span>
                 </div>
-                {apiError !== "generic" && (
-                  <p className="pl-7 text-[11px] text-red-500/70 font-mono break-all leading-normal">
-                    {apiError === "key_missing" ? dict.apiKeyErrorDesc : apiError}
-                  </p>
-                )}
               </div>
-            )}
-
-            {/* Message History rendering */}
-            {messages.map((message) => {
-              const isAssistant = message.role === "assistant";
-
-              return (
-                <div
-                  key={message.id}
-                  className={`flex flex-col ${isAssistant ? "items-start" : "items-end"} space-y-1.5`}
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setActiveTab("fale_sobre")}
+                  className="flex items-center space-x-2 px-4 py-2 bg-black text-white hover:bg-slate-800 transition-all rounded-full text-xs font-semibold cursor-pointer shadow-sm"
                 >
-                  {/* Timestamp & Sender */}
-                  <span className="text-[10px] uppercase tracking-widest text-[#999999] px-1 font-semibold">
-                    {isAssistant ? "Professor" : "Você"} • {message.timestamp}
-                  </span>
+                  <span>Voltar ao Chat</span>
+                </button>
+              </div>
+            </header>
+
+            {/* Ollama Setup Panel */}
+            <div className="flex-1 overflow-y-auto bg-[#FAFAFA]">
+              <div className="max-w-4xl mx-auto py-10 px-6">
+                <OllamaSection
+                  useLocalAI={useLocalAI}
+                  activeLocalModel={activeLocalModel}
+                  onSetUseLocalAI={handleSetUseLocalAI}
+                />
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Top Header Bar */}
+            <header className="min-h-20 py-3 md:py-0 border-b border-[#EDEDED] bg-white flex flex-col md:flex-row md:items-center justify-between px-6 md:px-10 flex-shrink-0 z-10 gap-3 md:gap-0">
+              <div className="flex flex-wrap items-center gap-2 md:gap-3 w-full md:w-auto">
+                <button
+                  onClick={() => setIsSidebarOpen(true)}
+                  className="md:hidden p-2 border border-[#EDEDED] rounded-full text-black hover:bg-[#F8F8F8] cursor-pointer flex-shrink-0"
+                >
+                  <Menu className="w-4 h-4" />
+                </button>
+                <div className="flex items-center space-x-2 text-xs text-[#666666] flex-shrink-0">
+                  <span className="font-semibold text-black">{dict.faleSobre}</span>
+                  <span>/</span>
+                  <span className="capitalize">{userLanguages.target}</span>
+                </div>
+
+                {/* Dropdown Selector for Active AI Engine */}
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-medium bg-[#FAFAFA] border-[#EDEDED] flex-shrink-0">
+                  <select
+                    id="ai-engine-selector"
+                    value={useLocalAI ? "ollama" : "gemini"}
+                    onChange={(e) => {
+                      const isLocal = e.target.value === "ollama";
+                      handleSetUseLocalAI(isLocal, activeLocalModel);
+                    }}
+                    className="bg-transparent border-none text-xs text-slate-700 py-0.5 px-1 focus:outline-none cursor-pointer font-semibold outline-none"
+                  >
+                    <option value="gemini">Gemini Flash</option>
+                    <option value="ollama">Ollhama Local</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto md:justify-end">
+                {/* Botão para abrir configuração do Ollama */}
+                <button
+                  id="ollama-config-button"
+                  onClick={() => setActiveTab("ollama")}
+                  className="flex items-center space-x-1 px-3 py-2 border border-[#EDEDED] rounded-full hover:bg-black hover:text-white transition-all text-xs font-semibold text-[#666666] cursor-pointer"
+                  title="Configuração do Ollama"
+                >
+                  <Cpu className="w-3.5 h-3.5" />
+                  <span>Ollama</span>
+                </button>
+
+                {/* Voltar para seleção de idiomas */}
+                <button
+                  onClick={handleLanguageReset}
+                  className="flex items-center space-x-1 px-3 py-2 border border-[#EDEDED] rounded-full hover:bg-black hover:text-white transition-colors text-xs font-semibold text-[#666666] hover:text-white cursor-pointer"
+                  title="Voltar para seleção de idiomas"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Alterar Idioma</span>
+                </button>
+
+                {/* Modalidade de Estudo / Botões de Ação no Topo */}
+                {exerciseState.phase === "none" ? (
+                  <>
+                    <button
+                      onClick={handleStartExercise}
+                      disabled={isLoading}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-xs font-semibold transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                    >
+                      <Play className="w-2.5 h-2.5 fill-white text-white" />
+                      <span>{dict.startExercise}</span>
+                    </button>
+                    
+                    <button
+                      onClick={() => handleSendTextMessage("Quero conversar um pouco")}
+                      disabled={isLoading}
+                      className="px-4 py-2 bg-[#EDF5FD] hover:bg-[#D6E6F7] text-[#1E3A8A] border border-[#D6E6F7] rounded-full text-xs font-semibold transition-all cursor-pointer shadow-sm disabled:opacity-50"
+                    >
+                      Bate-Papo Livre
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setExerciseState({
+                      phase: "none",
+                      topic: "",
+                      instruction: "",
+                      lastAnswer: "",
+                    })}
+                    className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-full text-xs font-semibold transition-all cursor-pointer shadow-sm"
+                  >
+                    Cancelar Exercício
+                  </button>
+                )}
+
+                {/* Limpar Histórico do Chat */}
+                <button
+                  onClick={handleClearChat}
+                  className="p-2 border border-[#EDEDED] rounded-full hover:bg-black hover:text-white transition-colors cursor-pointer text-[#999999] hover:text-white"
+                  title="Limpar Histórico do Chat"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </header>
+
+            {/* Conversation Feed */}
+            <div className="flex-1 overflow-y-auto px-6 md:px-10 py-10">
+              <div className="max-w-3xl space-y-8 pb-36 mx-auto">
+                
+                {/* API Error Warning Box */}
+                {apiError && (
+                  <div className="p-4 bg-white border border-red-200 rounded-2xl flex flex-col gap-1.5 text-xs text-red-600 animate-in fade-in duration-200 shadow-sm text-left">
+                    <div className="flex gap-3 items-center">
+                      <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                      <span className="font-semibold">
+                        {apiError === "key_missing" ? dict.apiKeyErrorTitle : dict.errorGeneric}
+                      </span>
+                    </div>
+                    {apiError !== "generic" && (
+                      <p className="pl-7 text-[11px] text-red-500/70 font-mono break-all leading-normal">
+                        {apiError === "key_missing" ? dict.apiKeyErrorDesc : apiError}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Message History rendering */}
+                {messages.map((message) => {
+                  const isAssistant = message.role === "assistant";
+
+                  return (
+                    <div
+                      key={message.id}
+                      className={`flex flex-col ${isAssistant ? "items-start" : "items-end"} space-y-1.5`}
+                    >
+                      {/* Timestamp & Sender */}
+                      <span className="text-[10px] uppercase tracking-widest text-[#999999] px-1 font-semibold">
+                        {isAssistant ? "Professor" : "Você"} • {message.timestamp}
+                      </span>
 
                   {/* Standard Text Response */}
                   {message.type === "text" && (
@@ -724,10 +1043,10 @@ export default function App() {
               </div>
             </form>
 
-
-
           </div>
         </div>
+      </>
+    )}
 
       </div>
     </div>
